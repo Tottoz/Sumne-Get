@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube サムネイルダウンローダー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .input-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .info-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .info-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .info-item {
+            margin-bottom: 10px;
+            color: #666;
+        }
+        
+        .info-item strong {
+            color: #333;
+        }
+        
+        .thumbnails-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            display: none;
+        }
+        
+        .thumbnail-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+        
+        .thumbnail-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .thumbnail-card h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .thumbnail-card img {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .download-link {
+            display: block;
+            text-align: center;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        .download-link:hover {
+            transform: translateY(-2px);
+        }
+        
+        .error {
+            background: #fee;
+            border: 2px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2em;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 YouTube サムネイルダウンローダー</h1>
+            <p>動画URLを入力してサムネイルをダウンロード</p>
+        </div>
+        
+        <div class="input-section">
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="YouTubeのURL（watch?v=、live、shortに対応）">
+                <button onclick="loadThumbnails()">取得</button>
+            </div>
+            <div class="error" id="error"></div>
+            <div class="loading" id="loading">読み込み中...</div>
+        </div>
+        
+        <div class="info-section" id="infoSection">
+            <h2>動画情報</h2>
+            <div class="info-item"><strong>タイトル:</strong> <span id="videoTitle"></span></div>
+            <div class="info-item"><strong>チャンネル:</strong> <span id="channelName"></span></div>
+            <div class="info-item"><strong>配信日時:</strong> <span id="publishDate"></span></div>
+        </div>
+        
+        <div class="thumbnails-grid" id="thumbnailsGrid"></div>
+    </div>
+
+    <script>
+        function extractVideoId(url) {
+            const patterns = [
+                /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+                /youtube\.com\/live\/([^&\n?#]+)/,
+                /youtube\.com\/shorts\/([^&\n?#]+)/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match) return match[1];
+            }
+            return null;
+        }
+        
+        function removeEmojis(text) {
+            return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
+        }
+        
+        function sanitizeFilename(text) {
+            return text.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
+        }
+        
+        async function getVideoMetadata(videoId) {
+            try {
+                const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+                const html = await response.text();
+                
+                const titleMatch = html.match(/<meta name="title" content="([^"]+)">/);
+                const channelMatch = html.match(/<link itemprop="name" content="([^"]+)">/);
+                const dateMatch = html.match(/<meta itemprop="uploadDate" content="([^"]+)">/);
+                
+                return {
+                    title: titleMatch ? titleMatch[1] : '不明',
+                    channel: channelMatch ? channelMatch[1] : '不明',
+                    date: dateMatch ? dateMatch[1] : null
+                };
+            } catch (e) {
+                return { title: '不明', channel: '不明', date: null };
+            }
+        }
+        
+        function formatDate(dateString) {
+            if (!dateString) return '不明';
+            const date = new Date(dateString);
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}年${m}月${d}日`;
+        }
+        
+        function formatDateForFilename(dateString) {
+            if (!dateString) return 'unknown';
+            const date = new Date(dateString);
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}${m}${d}`;
+        }
+        
+        async function loadThumbnails() {
+            const urlInput = document.getElementById('urlInput');
+            const error = document.getElementById('error');
+            const loading = document.getElementById('loading');
+            const infoSection = document.getElementById('infoSection');
+            const thumbnailsGrid = document.getElementById('thumbnailsGrid');
+            
+            error.style.display = 'none';
+            infoSection.style.display = 'none';
+            thumbnailsGrid.style.display = 'none';
+            thumbnailsGrid.innerHTML = '';
+            
+            const videoId = extractVideoId(urlInput.value);
+            
+            if (!videoId) {
+                error.textContent = 'URLが正しくありません。YouTubeの動画URLを入力してください。';
+                error.style.display = 'block';
+                return;
+            }
+            
+            loading.style.display = 'block';
+            
+            const metadata = await getVideoMetadata(videoId);
+            
+            loading.style.display = 'none';
+            
+            document.getElementById('videoTitle').textContent = metadata.title;
+            document.getElementById('channelName').textContent = metadata.channel;
+            document.getElementById('publishDate').textContent = formatDate(metadata.date);
+            
+            infoSection.style.display = 'block';
+            
+            const cleanTitle = sanitizeFilename(removeEmojis(metadata.title));
+            const cleanChannel = sanitizeFilename(metadata.channel);
+            const datePrefix = formatDateForFilename(metadata.date);
+            const baseFilename = `${datePrefix}_${cleanTitle}【${cleanChannel}】`;
+            
+            const sizes = [
+                { name: 'maxresdefault.jpg', label: '最高画質 (1920x1080)' },
+                { name: 'sddefault.jpg', label: '高画質 (640x480)' },
+                { name: 'hqdefault.jpg', label: '中画質 (480x360)' },
+                { name: 'mqdefault.jpg', label: '標準画質 (320x180)' },
+                { name: 'default.jpg', label: '低画質 (120x90)' }
+            ];
+            
+            sizes.forEach(size => {
+                const card = document.createElement('div');
+                card.className = 'thumbnail-card';
+                
+                const title = document.createElement('h3');
+                title.textContent = size.label;
+                
+                const img = document.createElement('img');
+                const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/${size.name}`;
+                img.src = thumbnailUrl;
+                img.alt = size.label;
+                img.onerror = function() {
+                    this.style.opacity = '0.5';
+                    this.alt = '画像が利用できません';
+                };
+                
+                const link = document.createElement('a');
+                link.href = thumbnailUrl;
+                link.download = `${baseFilename}.jpg`;
+                link.className = 'download-link';
+                link.textContent = '画像をダウンロード';
+                link.target = '_blank';
+                
+                card.appendChild(title);
+                card.appendChild(img);
+                card.appendChild(link);
+                thumbnailsGrid.appendChild(card);
+            });
+            
+            thumbnailsGrid.style.display = 'grid';
+        }
+        
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadThumbnails();
+            }
+        });
+    </script>
+</body>
+</html>
