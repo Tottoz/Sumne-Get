@@ -216,10 +216,6 @@
                 <input type="text" id="urlInput" placeholder="YouTubeのURL（watch?v=、live、shortに対応）">
                 <button onclick="loadThumbnails()">取得</button>
             </div>
-            <div class="date-group">
-                <label for="dateInput">配信日時:</label>
-                <input type="date" id="dateInput">
-            </div>
             <div class="error" id="error"></div>
             <div class="loading" id="loading">読み込み中...</div>
         </div>
@@ -259,28 +255,51 @@
         
         async function getVideoMetadata(url, videoId) {
             let title = '不明';
+            let channel = '不明';
+            let date = null;
             
-            // noembed.comからタイトルを取得
+            // noembed.comからタイトルとチャンネル名を取得
             try {
                 const noembedResponse = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
                 const noembedData = await noembedResponse.json();
                 title = noembedData.title || '不明';
+                channel = noembedData.author_name || '不明';
             } catch (e) {
                 console.error('Noembed fetch error:', e);
             }
             
-            // YouTube oEmbed APIからタイトルを取得（フォールバック）
-            if (!title || title === '不明') {
-                try {
-                    const oembedResponse = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-                    const oembedData = await oembedResponse.json();
+            // YouTube oEmbed APIから配信日時を取得を試みる
+            try {
+                const oembedResponse = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+                const oembedData = await oembedResponse.json();
+                
+                // oEmbedにはupload_dateがないので、タイトルから日付を抽出してみる
+                if (!title || title === '不明') {
                     title = oembedData.title || '不明';
-                } catch (e) {
-                    console.error('oEmbed fetch error:', e);
+                }
+                if (!channel || channel === '不明') {
+                    channel = oembedData.author_name || '不明';
+                }
+            } catch (e) {
+                console.error('oEmbed fetch error:', e);
+            }
+            
+            // タイトルから日付パターンを抽出（YYYY/MM/DD, YYYY-MM-DD, YYYYMMDD）
+            const titleDatePatterns = [
+                /(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/,
+                /(\d{4})(\d{2})(\d{2})/
+            ];
+            
+            for (const pattern of titleDatePatterns) {
+                const match = title.match(pattern);
+                if (match) {
+                    const [_, year, month, day] = match;
+                    date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    break;
                 }
             }
             
-            return { title };
+            return { title, channel, date };
         }
         
         function formatDate(dateString) {
@@ -294,22 +313,9 @@
         }
         
         function formatDateForFilename(dateString) {
-            if (!dateString) {
-                // デフォルトは今日の日付
-                const today = new Date();
-                const y = today.getFullYear();
-                const m = String(today.getMonth() + 1).padStart(2, '0');
-                const d = String(today.getDate()).padStart(2, '0');
-                return `${y}${m}${d}`;
-            }
+            if (!dateString) return 'unknown';
             const date = new Date(dateString);
-            if (isNaN(date.getTime())) {
-                const today = new Date();
-                const y = today.getFullYear();
-                const m = String(today.getMonth() + 1).padStart(2, '0');
-                const d = String(today.getDate()).padStart(2, '0');
-                return `${y}${m}${d}`;
-            }
+            if (isNaN(date.getTime())) return 'unknown';
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
             const d = String(date.getDate()).padStart(2, '0');
@@ -338,7 +344,6 @@
         
         async function loadThumbnails() {
             const urlInput = document.getElementById('urlInput');
-            const dateInput = document.getElementById('dateInput');
             const error = document.getElementById('error');
             const loading = document.getElementById('loading');
             const infoSection = document.getElementById('infoSection');
@@ -361,20 +366,17 @@
             
             const metadata = await getVideoMetadata(urlInput.value, videoId);
             
-            // 日付入力があればそれを優先、なければメタデータから取得した日付
-            const selectedDate = dateInput.value || metadata.date;
-            
             loading.style.display = 'none';
             
             document.getElementById('videoTitle').textContent = metadata.title;
             document.getElementById('channelName').textContent = metadata.channel;
-            document.getElementById('publishDate').textContent = formatDate(selectedDate);
+            document.getElementById('publishDate').textContent = formatDate(metadata.date);
             
             infoSection.style.display = 'block';
             
             const cleanTitle = sanitizeFilename(removeEmojis(metadata.title));
             const cleanChannel = sanitizeFilename(metadata.channel);
-            const datePrefix = formatDateForFilename(selectedDate);
+            const datePrefix = formatDateForFilename(metadata.date);
             const baseFilename = `${datePrefix}_${cleanTitle}【${cleanChannel}】`;
             
             const sizes = [
@@ -419,15 +421,6 @@
             if (e.key === 'Enter') {
                 loadThumbnails();
             }
-        });
-        
-        // デフォルトで今日の日付を設定
-        window.addEventListener('DOMContentLoaded', function() {
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            document.getElementById('dateInput').value = `${yyyy}-${mm}-${dd}`;
         });
     </script>
 </body>
