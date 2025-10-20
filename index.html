@@ -226,20 +226,53 @@
             return text.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
         }
         
-        async function getVideoMetadata(url) {
+        async function getVideoMetadata(url, videoId) {
+            let title = '不明';
+            let channel = '不明';
+            let date = null;
+            
             try {
-                const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-                
-                return {
-                    title: data.title || '不明',
-                    channel: data.author_name || '不明',
-                    date: data.upload_date || null
-                };
+                const noembedResponse = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+                const noembedData = await noembedResponse.json();
+                title = noembedData.title || '不明';
+                channel = noembedData.author_name || '不明';
             } catch (e) {
-                console.error('Metadata fetch error:', e);
-                return { title: '不明', channel: '不明', date: null };
+                console.error('Noembed fetch error:', e);
             }
+            
+            try {
+                const htmlResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+                const html = await htmlResponse.text();
+                
+                // 配信予定の日時を取得
+                const scheduledMatch = html.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*に公開予定/);
+                if (scheduledMatch) {
+                    const [_, year, month, day] = scheduledMatch;
+                    date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                }
+                
+                // 配信後の日時を取得
+                if (!date) {
+                    const liveMatch = html.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*にライブ配信/);
+                    if (liveMatch) {
+                        const [_, year, month, day] = liveMatch;
+                        date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    }
+                }
+                
+                // その他の配信日時パターン
+                if (!date) {
+                    const uploadMatch = html.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+                    if (uploadMatch) {
+                        const [_, year, month, day] = uploadMatch;
+                        date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    }
+                }
+            } catch (e) {
+                console.error('HTML fetch error:', e);
+            }
+            
+            return { title, channel, date };
         }
         
         function formatDate(dateString) {
@@ -304,7 +337,7 @@
             
             loading.style.display = 'block';
             
-            const metadata = await getVideoMetadata(urlInput.value);
+            const metadata = await getVideoMetadata(urlInput.value, videoId);
             
             loading.style.display = 'none';
             
