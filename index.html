@@ -341,12 +341,12 @@
             loading.style.display = 'none';
             
             document.getElementById('videoTitle').textContent = metadata.title;
-            document.getElementById('publishDate').textContent = formatDate(selectedDate);
+            // document.getElementById('publishDate').textContent = formatDate(selectedDate);
             
             infoSection.style.display = 'block';
             
             const cleanTitle = sanitizeFilename(removeEmojis(metadata.title));
-            const datePrefix = formatDateForFilename(selectedDate);
+            // const datePrefix = formatDateForFilename(selectedDate);
             const baseFilename = `${datePrefix}_${cleanTitle}`;
             
             const sizes = [
