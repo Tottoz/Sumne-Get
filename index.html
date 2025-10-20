@@ -227,6 +227,7 @@
         <div class="info-section" id="infoSection">
             <h2>動画情報</h2>
             <div class="info-item"><strong>タイトル:</strong> <span id="videoTitle"></span></div>
+            <div class="info-item"><strong>チャンネル:</strong> <span id="channelName"></span></div>
             <div class="info-item"><strong>配信日時:</strong> <span id="publishDate"></span></div>
         </div>
         
@@ -234,8 +235,6 @@
     </div>
 
     <script>
-        const YOUTUBE_API_KEY = 'AIzaSyDgHUXkcau5ap7Oa5pMTpWRG6fOy33Jn_8';
-        
         function extractVideoId(url) {
             const patterns = [
                 /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
@@ -258,34 +257,30 @@
             return text.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
         }
         
-        async function getVideoMetadata(videoId) {
+        async function getVideoMetadata(url, videoId) {
+            let title = '不明';
+            
+            // noembed.comからタイトルを取得
             try {
-                const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
-                const response = await fetch(apiUrl);
-                const data = await response.json();
-                
-                if (data.items && data.items.length > 0) {
-                    const video = data.items[0];
-                    const title = video.snippet.title || '不明';
-                    
-                    // 配信日時を取得（ライブ配信の場合はactualStartTime、通常動画はpublishedAt）
-                    let publishDate = null;
-                    if (video.liveStreamingDetails && video.liveStreamingDetails.actualStartTime) {
-                        publishDate = video.liveStreamingDetails.actualStartTime;
-                    } else if (video.liveStreamingDetails && video.liveStreamingDetails.scheduledStartTime) {
-                        publishDate = video.liveStreamingDetails.scheduledStartTime;
-                    } else {
-                        publishDate = video.snippet.publishedAt;
-                    }
-                    
-                    return { title, date: publishDate };
-                }
-                
-                return { title: '不明', date: null };
+                const noembedResponse = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+                const noembedData = await noembedResponse.json();
+                title = noembedData.title || '不明';
             } catch (e) {
-                console.error('YouTube API fetch error:', e);
-                return { title: '不明', date: null };
+                console.error('Noembed fetch error:', e);
             }
+            
+            // YouTube oEmbed APIからタイトルを取得（フォールバック）
+            if (!title || title === '不明') {
+                try {
+                    const oembedResponse = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+                    const oembedData = await oembedResponse.json();
+                    title = oembedData.title || '不明';
+                } catch (e) {
+                    console.error('oEmbed fetch error:', e);
+                }
+            }
+            
+            return { title };
         }
         
         function formatDate(dateString) {
@@ -295,9 +290,7 @@
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
             const d = String(date.getDate()).padStart(2, '0');
-            const h = String(date.getHours()).padStart(2, '0');
-            const min = String(date.getMinutes()).padStart(2, '0');
-            return `${y}年${m}月${d}日 ${h}:${min}`;
+            return `${y}年${m}月${d}日`;
         }
         
         function formatDateForFilename(dateString) {
@@ -368,19 +361,21 @@
             
             const metadata = await getVideoMetadata(urlInput.value, videoId);
             
-            // 日付入力があればそれを優先
-            const selectedDate = dateInput.value;
+            // 日付入力があればそれを優先、なければメタデータから取得した日付
+            const selectedDate = dateInput.value || metadata.date;
             
             loading.style.display = 'none';
             
             document.getElementById('videoTitle').textContent = metadata.title;
+            document.getElementById('channelName').textContent = metadata.channel;
             document.getElementById('publishDate').textContent = formatDate(selectedDate);
             
             infoSection.style.display = 'block';
             
             const cleanTitle = sanitizeFilename(removeEmojis(metadata.title));
+            const cleanChannel = sanitizeFilename(metadata.channel);
             const datePrefix = formatDateForFilename(selectedDate);
-            const baseFilename = `${datePrefix}_${cleanTitle}`;
+            const baseFilename = `${datePrefix}_${cleanTitle}【${cleanChannel}】`;
             
             const sizes = [
                 { name: 'maxresdefault.jpg', label: '最高画質 (1920x1080)' },
