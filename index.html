@@ -137,21 +137,25 @@
             border-radius: 8px;
             margin-bottom: 15px;
             display: block;
+            cursor: pointer;
         }
         
-        .download-link {
+        .download-btn {
             display: block;
             text-align: center;
             padding: 12px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            text-decoration: none;
+            border: none;
             border-radius: 8px;
             font-weight: bold;
             transition: transform 0.2s;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
         }
         
-        .download-link:hover {
+        .download-btn:hover {
             transform: translateY(-2px);
         }
         
@@ -222,21 +226,18 @@
             return text.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim();
         }
         
-        async function getVideoMetadata(videoId) {
+        async function getVideoMetadata(url) {
             try {
-                const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
-                const html = await response.text();
-                
-                const titleMatch = html.match(/<meta name="title" content="([^"]+)">/);
-                const channelMatch = html.match(/<link itemprop="name" content="([^"]+)">/);
-                const dateMatch = html.match(/<meta itemprop="uploadDate" content="([^"]+)">/);
+                const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
                 
                 return {
-                    title: titleMatch ? titleMatch[1] : '不明',
-                    channel: channelMatch ? channelMatch[1] : '不明',
-                    date: dateMatch ? dateMatch[1] : null
+                    title: data.title || '不明',
+                    channel: data.author_name || '不明',
+                    date: data.upload_date || null
                 };
             } catch (e) {
+                console.error('Metadata fetch error:', e);
                 return { title: '不明', channel: '不明', date: null };
             }
         }
@@ -244,6 +245,7 @@
         function formatDate(dateString) {
             if (!dateString) return '不明';
             const date = new Date(dateString);
+            if (isNaN(date.getTime())) return '不明';
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
             const d = String(date.getDate()).padStart(2, '0');
@@ -253,10 +255,31 @@
         function formatDateForFilename(dateString) {
             if (!dateString) return 'unknown';
             const date = new Date(dateString);
+            if (isNaN(date.getTime())) return 'unknown';
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
             const d = String(date.getDate()).padStart(2, '0');
             return `${y}${m}${d}`;
+        }
+        
+        async function downloadImage(url, filename) {
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+            } catch (e) {
+                console.error('Download error:', e);
+                alert('ダウンロードに失敗しました。画像を右クリックして保存してください。');
+            }
         }
         
         async function loadThumbnails() {
@@ -281,7 +304,7 @@
             
             loading.style.display = 'block';
             
-            const metadata = await getVideoMetadata(videoId);
+            const metadata = await getVideoMetadata(urlInput.value);
             
             loading.style.display = 'none';
             
@@ -320,16 +343,14 @@
                     this.alt = '画像が利用できません';
                 };
                 
-                const link = document.createElement('a');
-                link.href = thumbnailUrl;
-                link.download = `${baseFilename}.jpg`;
-                link.className = 'download-link';
-                link.textContent = '画像をダウンロード';
-                link.target = '_blank';
+                const btn = document.createElement('button');
+                btn.className = 'download-btn';
+                btn.textContent = '画像をダウンロード';
+                btn.onclick = () => downloadImage(thumbnailUrl, `${baseFilename}.jpg`);
                 
                 card.appendChild(title);
                 card.appendChild(img);
-                card.appendChild(link);
+                card.appendChild(btn);
                 thumbnailsGrid.appendChild(card);
             });
             
