@@ -283,23 +283,28 @@
             
             try {
                 const apiKey = AKG();
-                const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
+                const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,liveStreamingDetails&id=${videoId}&key=${apiKey}`);
                 const data = await response.json();
                 
                 if (!data.items || data.items.length === 0) {
                     throw new Error('動画情報が見つかりませんでした');
                 }
                 
-                const video = data.items[0].snippet;
-                const publishDate = new Date(video.publishedAt);
+                const video = data.items[0];
+                const snippet = video.snippet;
+                const liveDetails = video.liveStreamingDetails;
+                
+                // ライブ配信の予定開始時刻を優先、なければ公開日時を使用
+                const dateString = liveDetails?.scheduledStartTime || snippet.publishedAt;
+                const publishDate = new Date(dateString);
                 const dateStr = publishDate.getFullYear() + 
                                String(publishDate.getMonth() + 1).padStart(2, '0') + 
                                String(publishDate.getDate()).padStart(2, '0');
                 
-                const cleanTitle = sanitizeFilename(removeEmojis(video.title));
+                const cleanTitle = sanitizeFilename(removeEmojis(snippet.title));
                 
-                document.getElementById('channelName').textContent = video.channelTitle;
-                document.getElementById('videoTitle').textContent = video.title;
+                document.getElementById('channelName').textContent = snippet.channelTitle;
+                document.getElementById('videoTitle').textContent = snippet.title;
                 document.getElementById('publishDate').textContent = publishDate.toLocaleString('ja-JP');
                 
                 const thumbnailSizes = [
